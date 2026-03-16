@@ -9,9 +9,10 @@ import LoadingSpinner from './components/common/LoadingSpinner';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import BoardList from './components/Boards/BoardList';
 import BoardView from './components/Boards/BoardView';
+import BoardSettings from './components/Settings/BoardSettings';
+import JoinBoard from './components/Boards/JoinBoard';
 import TaskDetail from './components/Tasks/TaskDetail';
 import ArchivedTasks from './components/Tasks/ArchivedTasks';
-import BoardSettings from './components/Settings/BoardSettings';
 
 function AppContent() {
   const { isAuthenticated, isLoading, isBootstrapping, signIn } = useAuth();
@@ -24,8 +25,23 @@ function AppContent() {
     );
   }
 
+  // Allow /join route before sign-in
   if (!isAuthenticated) {
-    return <SignInScreen onSignIn={signIn} isLoading={isLoading} />;
+    return (
+      <Routes>
+        <Route
+          path="/join/:boardId"
+          element={
+            <OfflineProvider>
+              <BoardProvider>
+                <JoinBoard />
+              </BoardProvider>
+            </OfflineProvider>
+          }
+        />
+        <Route path="*" element={<SignInScreen onSignIn={signIn} isLoading={isLoading} />} />
+      </Routes>
+    );
   }
 
   return (
@@ -40,6 +56,7 @@ function AppContent() {
                 <Route path="/board/:boardId/task/:taskId" element={<TaskDetail />} />
                 <Route path="/board/:boardId/archived" element={<ArchivedTasks />} />
                 <Route path="/board/:boardId/settings" element={<BoardSettings />} />
+                <Route path="/join/:boardId" element={<JoinBoard />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Layout>

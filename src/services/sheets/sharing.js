@@ -31,6 +31,26 @@ const sharingMethods = {
     }
   },
 
+  async joinBoardByLink(spreadsheetId) {
+    // Verify the board exists and is accessible, then add a shortcut to user's Drive
+    const file = await this.makeRequest(
+      `https://www.googleapis.com/drive/v3/files/${spreadsheetId}?fields=id,name,appProperties,capabilities(canEdit)`
+    );
+    // Add shortcut so board appears in user's board list (ignore failure if already added)
+    await this.makeRequest(
+      'https://www.googleapis.com/drive/v3/files',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          name: file.name,
+          mimeType: 'application/vnd.google-apps.shortcut',
+          shortcutDetails: { targetId: spreadsheetId },
+        }),
+      }
+    ).catch(() => {});
+    return file;
+  },
+
   async removeProjectCollaborator(spreadsheetId, permissionId) {
     try {
       await this.makeRequest(
