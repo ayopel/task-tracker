@@ -87,7 +87,14 @@ export default function ShareBoardModal({ isOpen, onClose, boardId }) {
       setSuggestions([]);
       setRole('viewer');
     } catch (err) {
-      setError(err.message || 'Failed to share board');
+      const msg = err?.message || '';
+      if (msg.includes('403') || msg.includes('domainPolicy') || msg.includes('sharingNotSupported')) {
+        setError('Cannot share: the recipient\'s Google account does not allow external sharing, or you don\'t have permission to share this file.');
+      } else if (msg.includes('400') || msg.includes('invalid')) {
+        setError('Invalid email address. Please check and try again.');
+      } else {
+        setError(msg || 'Failed to share board. Please try again.');
+      }
       console.error('Error sharing board:', err);
     } finally {
       setIsSharing(false);
