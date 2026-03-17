@@ -287,8 +287,10 @@ const boardMethods = {
         requests.push(this.makeRequest(this.buildDriveListUrl(ownedQuery)).then(r => ({ r, ownership: 'owned' })));
       }
 
-      // sharedWithMe=true catches boards shared directly via email
-      const sharedQuery = `sharedWithMe=true and mimeType='${SPREADSHEET_MIME_TYPE}' and trashed=false and (${APP_PROPERTY_QUERY})`;
+      // sharedWithMe=true catches boards shared directly via email.
+      // Note: we cannot filter by 'properties' on files we don't own — Drive silently
+      // returns nothing. Filter by name prefix instead, which is always readable.
+      const sharedQuery = `sharedWithMe=true and mimeType='${SPREADSHEET_MIME_TYPE}' and trashed=false and name contains '${FILE_PREFIX}'`;
       requests.push(this.makeRequest(this.buildDriveListUrl(sharedQuery)).then(r => ({ r, ownership: 'shared' })));
 
       // Also catch boards joined via link: the shortcut lives in the user's Drive,
