@@ -3,7 +3,7 @@ import { useBoard } from '../../context/BoardContext';
 import { useAuth } from '../../context/AuthContext';
 import googleAuthService from '../../services/googleAuthService';
 import Modal from '../common/Modal';
-import { UserPlus, X, Users, Crown, Eye, Edit3 } from 'lucide-react';
+import { UserPlus, X, Users, Crown, Eye, Edit3, Link, Check } from 'lucide-react';
 
 export default function ShareBoardModal({ isOpen, onClose, boardId }) {
   const { boards, getBoard, shareBoard, removeCollaborator } = useBoard();
@@ -19,6 +19,15 @@ export default function ShareBoardModal({ isOpen, onClose, boardId }) {
   const [isLeaving, setIsLeaving] = useState(false);
   const [error, setError] = useState('');
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const handleCopyLink = () => {
+    const link = `${window.location.origin}/join/${boardId}`;
+    navigator.clipboard.writeText(link).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    });
+  };
 
   const suggestionsTimeoutRef = useRef(null);
 
@@ -72,13 +81,27 @@ export default function ShareBoardModal({ isOpen, onClose, boardId }) {
 
     setIsSharing(true);
     try {
-      // shareBoard(boardId, email, role)
+      console.log('Attempting to share board', boardId, 'with', email.trim(), 'as', role === 'editor' ? 'writer' : 'reader');
       await shareBoard(boardId, email.trim(), role === 'editor' ? 'writer' : 'reader');
+      console.log('Share successful');
       setEmail('');
       setSuggestions([]);
       setRole('viewer');
+      alert('Board shared successfully!');
     } catch (err) {
-      setError(err.message || 'Failed to share board');
+      console.error('Full error object:', err);
+      const msg = err?.message || '';
+      console.log('Error message:', msg);
+
+      if (msg.includes('403') || msg.includes('domainPolicy') || msg.includes('sharingNotSupported')) {
+        setError('Cannot share: the recipient\'s Google account does not allow external sharing, or you don\'t have permission to share this file.');
+      } else if (msg.includes('400') || msg.includes('invalid')) {
+        setError('Invalid email address. Please check and try again.');
+      } else if (msg.includes('401')) {
+        setError('Your session expired. Please sign out and sign back in.');
+      } else {
+        setError(msg || 'Failed to share board. Please try again.');
+      }
       console.error('Error sharing board:', err);
     } finally {
       setIsSharing(false);
@@ -129,6 +152,21 @@ export default function ShareBoardModal({ isOpen, onClose, boardId }) {
       size="md"
     >
       <div className="space-y-6">
+        {/* Copy Link */}
+        <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Share via link</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{`${window.location.origin}/join/${boardId}`}</p>
+          </div>
+          <button
+            onClick={handleCopyLink}
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg text-sm font-medium transition-colors"
+          >
+            {linkCopied ? <Check className="w-4 h-4 text-green-500" /> : <Link className="w-4 h-4" />}
+            {linkCopied ? 'Copied!' : 'Copy link'}
+          </button>
+        </div>
+
         {/* Share Form */}
         {isOwner && (
           <form onSubmit={handleShare} className="space-y-4">
