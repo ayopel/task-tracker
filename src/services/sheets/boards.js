@@ -115,7 +115,7 @@ const boardMethods = {
     const spreadsheetId = createResponse.spreadsheetId;
 
     // 2. Move to app folder
-    this.makeRequest(
+    await this.makeRequest(
       `https://www.googleapis.com/drive/v3/files/${spreadsheetId}?addParents=${folderId}&removeParents=root&fields=id,parents`,
       { method: 'PATCH' }
     ).catch(err => console.warn('Could not move spreadsheet to folder:', err));
@@ -232,11 +232,12 @@ const boardMethods = {
   async tagBoardFile(spreadsheetId, boardName) {
     try {
       await this.makeRequest(
-        `https://www.googleapis.com/drive/v3/files/${spreadsheetId}?fields=id,appProperties`,
+        `https://www.googleapis.com/drive/v3/files/${spreadsheetId}?fields=id,properties`,
         {
           method: 'PATCH',
           body: JSON.stringify({
-            appProperties: {
+            // Use public 'properties' so shared users can query/see this tag
+            properties: {
               [APP_PROPERTY_KEY]: APP_PROPERTY_VALUE,
               boardName,
             },
@@ -248,7 +249,7 @@ const boardMethods = {
     }
   },
 
-  mapBoardFile(file, ownership = 'owned') {
+  mapBoardFile(file, ownership = 'owned', collaborators = []) {
     return {
       id: file.id,
       name: (file.name || '').replace(FILE_PREFIX, ''),
@@ -259,6 +260,7 @@ const boardMethods = {
       canEdit: file.capabilities?.canEdit ?? false,
       canShare: file.capabilities?.canShare ?? false,
       isShared: !!file.shared,
+      collaborators,
       raw: file,
     };
   },
@@ -266,7 +268,7 @@ const boardMethods = {
   buildDriveListUrl(query) {
     const params = new URLSearchParams({
       q: query,
-      fields: 'files(id,name,createdTime,modifiedTime,owners(emailAddress,displayName),capabilities(canEdit,canShare),ownedByMe,appProperties,shared)',
+      fields: 'files(id,name,createdTime,modifiedTime,owners(emailAddress,displayName),capabilities(canEdit,canShare),ownedByMe,properties,shared)',
       orderBy: 'modifiedTime desc',
       pageSize: '100',
       spaces: 'drive',
@@ -285,23 +287,86 @@ const boardMethods = {
         requests.push(this.makeRequest(this.buildDriveListUrl(ownedQuery)).then(r => ({ r, ownership: 'owned' })));
       }
 
-      const sharedQuery = `sharedWithMe=true and mimeType='${SPREADSHEET_MIME_TYPE}' and trashed=false and (${APP_PROPERTY_QUERY})`;
+      // sharedWithMe=true catches boards shared directly via email.
+      // Note: we cannot filter by 'properties' on files we don't own — Drive silently
+      // returns nothing. Filter by name prefix instead, which is always readable.
+      const sharedQuery = `sharedWithMe=true and mimeType='${SPREADSHEET_MIME_TYPE}' and trashed=false and name contains '${FILE_PREFIX}'`;
       requests.push(this.makeRequest(this.buildDriveListUrl(sharedQuery)).then(r => ({ r, ownership: 'shared' })));
+
+      // Also catch boards joined via link: the shortcut lives in the user's Drive,
+      // but the target spreadsheet is accessible. Query for the shortcut files themselves
+      // so we can resolve their target IDs.
+      const shortcutQuery = `mimeType='application/vnd.google-apps.shortcut' and trashed=false`;
+      requests.push(
+        this.makeRequest(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(shortcutQuery)}&fields=files(id,name,shortcutDetails)&pageSize=100`
+        ).then(async (r) => {
+          const targetIds = (r.files || [])
+            .map(f => f.shortcutDetails?.targetId)
+            .filter(Boolean);
+          if (targetIds.length === 0) return { r: { files: [] }, ownership: 'shared' };
+          // Fetch the actual spreadsheet files for these shortcut targets
+          const targetFiles = await Promise.allSettled(
+            targetIds.map(id =>
+              this.makeRequest(
+                `https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,createdTime,modifiedTime,owners(emailAddress,displayName),capabilities(canEdit,canShare),ownedByMe,properties,shared`
+              ).catch(() => null)
+            )
+          );
+          const files = targetFiles
+            .filter(res => res.status === 'fulfilled' && res.value)
+            .map(res => res.value)
+            .filter(file =>
+              file.properties?.[APP_PROPERTY_KEY] === APP_PROPERTY_VALUE
+            );
+          return { r: { files }, ownership: 'shared' };
+        }).catch(() => ({ r: { files: [] }, ownership: 'shared' }))
+      );
 
       const results = await Promise.allSettled(requests);
       const boardMap = new Map();
+      const collaboratorFetchPromises = [];
 
       results.forEach(result => {
         if (result.status !== 'fulfilled') return;
         const { r, ownership } = result.value;
         (r.files || []).forEach(file => {
           if (!boardMap.has(file.id)) {
-            boardMap.set(file.id, this.mapBoardFile(file, ownership));
+            boardMap.set(file.id, { file, ownership });
+            // Fetch collaborators for this board
+            collaboratorFetchPromises.push(
+              this.listProjectCollaborators(file.id)
+                .then(collaborators => ({ fileId: file.id, collaborators }))
+                .catch(err => {
+                  console.warn(`Could not fetch collaborators for board ${file.id}:`, err);
+                  return { fileId: file.id, collaborators: [] };
+                })
+            );
           }
         });
       });
 
-      return Array.from(boardMap.values()).sort(
+      // Wait for all collaborator fetches to complete
+      const collaboratorResults = await Promise.all(collaboratorFetchPromises);
+      const collaboratorMap = new Map();
+      collaboratorResults.forEach(({ fileId, collaborators }) => {
+        collaboratorMap.set(fileId, collaborators);
+      });
+
+      // Map files to board objects with collaborators
+      const boards = Array.from(boardMap.values()).map(({ file, ownership }) => {
+        const collaborators = collaboratorMap.get(file.id) || [];
+        const mappedCollaborators = collaborators.map(perm => ({
+          id: perm.id,
+          email: perm.emailAddress,
+          name: perm.displayName,
+          role: perm.role === 'owner' ? 'owner' : (perm.role === 'writer' ? 'editor' : 'viewer'),
+          isOwner: perm.role === 'owner',
+        }));
+        return this.mapBoardFile(file, ownership, mappedCollaborators);
+      });
+
+      return boards.sort(
         (a, b) => new Date(b.modifiedTime) - new Date(a.modifiedTime)
       );
     } catch (error) {
