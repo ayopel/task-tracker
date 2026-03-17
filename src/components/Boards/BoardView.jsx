@@ -257,6 +257,7 @@ export default function BoardView() {
       <ShareBoardModal
         isOpen={showShareModal}
         boardId={boardId}
+        boardName={currentBoard?.name}
         onClose={() => setShowShareModal(false)}
       />
     </div>

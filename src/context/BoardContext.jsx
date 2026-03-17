@@ -128,6 +128,7 @@ export const BoardProvider = ({ children }) => {
         'canShare',
         'isShared',
         'modifiedTime',
+        'collaborators',
       ];
 
       const hasDifferences = keysToCompare.some(
@@ -179,6 +180,9 @@ export const BoardProvider = ({ children }) => {
           setCurrentBoard(null);
           localStorage.removeItem('currentBoardId');
         }
+      } else {
+        // Other collaborator removal: refresh board list to update collaborators
+        await loadBoards();
       }
     } catch (error) {
       console.error('Error removing collaborator:', error);

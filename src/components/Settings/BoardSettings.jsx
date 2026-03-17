@@ -230,6 +230,7 @@ export default function BoardSettings() {
       <ShareBoardModal
         isOpen={showShareModal}
         boardId={boardId}
+        boardName={board?.name}
         onClose={() => setShowShareModal(false)}
       />
     </div>
