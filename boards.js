@@ -5,6 +5,7 @@ import {
   FILE_PREFIX,
   APP_PROPERTY_KEY,
   APP_PROPERTY_VALUE,
+  APP_PROPERTY_QUERY,
   APP_FOLDER_COLOR,
   SHEET_TABS,
   DEFAULT_CATEGORIES,
@@ -235,6 +236,7 @@ const boardMethods = {
         {
           method: 'PATCH',
           body: JSON.stringify({
+            // Use public 'properties' so shared users can query/see this tag
             properties: {
               [APP_PROPERTY_KEY]: APP_PROPERTY_VALUE,
               boardName,
@@ -286,12 +288,14 @@ const boardMethods = {
       }
 
       // sharedWithMe=true catches boards shared directly via email.
-      // Do NOT filter by 'properties' here — Drive cannot query properties on files
-      // you don't own, so it silently returns nothing. Filter by name prefix instead.
+      // Note: we cannot filter by 'properties' on files we don't own — Drive silently
+      // returns nothing. Filter by name prefix instead, which is always readable.
       const sharedQuery = `sharedWithMe=true and mimeType='${SPREADSHEET_MIME_TYPE}' and trashed=false and name contains '${FILE_PREFIX}'`;
       requests.push(this.makeRequest(this.buildDriveListUrl(sharedQuery)).then(r => ({ r, ownership: 'shared' })));
 
-      // Also catch boards joined via link shortcut
+      // Also catch boards joined via link: the shortcut lives in the user's Drive,
+      // but the target spreadsheet is accessible. Query for the shortcut files themselves
+      // so we can resolve their target IDs.
       const shortcutQuery = `mimeType='application/vnd.google-apps.shortcut' and trashed=false`;
       requests.push(
         this.makeRequest(
@@ -301,6 +305,7 @@ const boardMethods = {
             .map(f => f.shortcutDetails?.targetId)
             .filter(Boolean);
           if (targetIds.length === 0) return { r: { files: [] }, ownership: 'shared' };
+          // Fetch the actual spreadsheet files for these shortcut targets
           const targetFiles = await Promise.allSettled(
             targetIds.map(id =>
               this.makeRequest(
@@ -311,7 +316,9 @@ const boardMethods = {
           const files = targetFiles
             .filter(res => res.status === 'fulfilled' && res.value)
             .map(res => res.value)
-            .filter(file => file.properties?.[APP_PROPERTY_KEY] === APP_PROPERTY_VALUE);
+            .filter(file =>
+              file.properties?.[APP_PROPERTY_KEY] === APP_PROPERTY_VALUE
+            );
           return { r: { files }, ownership: 'shared' };
         }).catch(() => ({ r: { files: [] }, ownership: 'shared' }))
       );
@@ -326,6 +333,7 @@ const boardMethods = {
         (r.files || []).forEach(file => {
           if (!boardMap.has(file.id)) {
             boardMap.set(file.id, { file, ownership });
+            // Fetch collaborators for this board
             collaboratorFetchPromises.push(
               this.listProjectCollaborators(file.id)
                 .then(collaborators => ({ fileId: file.id, collaborators }))
@@ -338,12 +346,14 @@ const boardMethods = {
         });
       });
 
+      // Wait for all collaborator fetches to complete
       const collaboratorResults = await Promise.all(collaboratorFetchPromises);
       const collaboratorMap = new Map();
       collaboratorResults.forEach(({ fileId, collaborators }) => {
         collaboratorMap.set(fileId, collaborators);
       });
 
+      // Map files to board objects with collaborators
       const boards = Array.from(boardMap.values()).map(({ file, ownership }) => {
         const collaborators = collaboratorMap.get(file.id) || [];
         const mappedCollaborators = collaborators.map(perm => ({
@@ -392,12 +402,14 @@ const boardMethods = {
   },
 
   async updateBoardSettings(spreadsheetId, boardData) {
+    // Build list of key-value pairs to persist
     const settingsToWrite = [];
     if (boardData.statusFlow !== undefined) settingsToWrite.push(['statusFlow', boardData.statusFlow]);
     if (boardData.statusColors !== undefined) settingsToWrite.push(['statusColors', boardData.statusColors]);
     if (boardData.categories !== undefined) settingsToWrite.push(['categories', boardData.categories]);
     if (settingsToWrite.length === 0) return;
 
+    // Fetch existing rows to locate keys
     const response = await this.makeRequest(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${SHEET_TABS.SETTINGS}!A1:B20`
     );
