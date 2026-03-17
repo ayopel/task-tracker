@@ -115,7 +115,7 @@ const boardMethods = {
     const spreadsheetId = createResponse.spreadsheetId;
 
     // 2. Move to app folder
-    this.makeRequest(
+    await this.makeRequest(
       `https://www.googleapis.com/drive/v3/files/${spreadsheetId}?addParents=${folderId}&removeParents=root&fields=id,parents`,
       { method: 'PATCH' }
     ).catch(err => console.warn('Could not move spreadsheet to folder:', err));
@@ -232,11 +232,12 @@ const boardMethods = {
   async tagBoardFile(spreadsheetId, boardName) {
     try {
       await this.makeRequest(
-        `https://www.googleapis.com/drive/v3/files/${spreadsheetId}?fields=id,appProperties`,
+        `https://www.googleapis.com/drive/v3/files/${spreadsheetId}?fields=id,properties`,
         {
           method: 'PATCH',
           body: JSON.stringify({
-            appProperties: {
+            // Use public 'properties' so shared users can query/see this tag
+            properties: {
               [APP_PROPERTY_KEY]: APP_PROPERTY_VALUE,
               boardName,
             },
@@ -267,7 +268,7 @@ const boardMethods = {
   buildDriveListUrl(query) {
     const params = new URLSearchParams({
       q: query,
-      fields: 'files(id,name,createdTime,modifiedTime,owners(emailAddress,displayName),capabilities(canEdit,canShare),ownedByMe,appProperties,shared)',
+      fields: 'files(id,name,createdTime,modifiedTime,owners(emailAddress,displayName),capabilities(canEdit,canShare),ownedByMe,properties,shared)',
       orderBy: 'modifiedTime desc',
       pageSize: '100',
       spaces: 'drive',
@@ -286,8 +287,39 @@ const boardMethods = {
         requests.push(this.makeRequest(this.buildDriveListUrl(ownedQuery)).then(r => ({ r, ownership: 'owned' })));
       }
 
+      // sharedWithMe=true catches boards shared directly via email
       const sharedQuery = `sharedWithMe=true and mimeType='${SPREADSHEET_MIME_TYPE}' and trashed=false and (${APP_PROPERTY_QUERY})`;
       requests.push(this.makeRequest(this.buildDriveListUrl(sharedQuery)).then(r => ({ r, ownership: 'shared' })));
+
+      // Also catch boards joined via link: the shortcut lives in the user's Drive,
+      // but the target spreadsheet is accessible. Query for the shortcut files themselves
+      // so we can resolve their target IDs.
+      const shortcutQuery = `mimeType='application/vnd.google-apps.shortcut' and trashed=false`;
+      requests.push(
+        this.makeRequest(
+          `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(shortcutQuery)}&fields=files(id,name,shortcutDetails)&pageSize=100`
+        ).then(async (r) => {
+          const targetIds = (r.files || [])
+            .map(f => f.shortcutDetails?.targetId)
+            .filter(Boolean);
+          if (targetIds.length === 0) return { r: { files: [] }, ownership: 'shared' };
+          // Fetch the actual spreadsheet files for these shortcut targets
+          const targetFiles = await Promise.allSettled(
+            targetIds.map(id =>
+              this.makeRequest(
+                `https://www.googleapis.com/drive/v3/files/${id}?fields=id,name,createdTime,modifiedTime,owners(emailAddress,displayName),capabilities(canEdit,canShare),ownedByMe,properties,shared`
+              ).catch(() => null)
+            )
+          );
+          const files = targetFiles
+            .filter(res => res.status === 'fulfilled' && res.value)
+            .map(res => res.value)
+            .filter(file =>
+              file.properties?.[APP_PROPERTY_KEY] === APP_PROPERTY_VALUE
+            );
+          return { r: { files }, ownership: 'shared' };
+        }).catch(() => ({ r: { files: [] }, ownership: 'shared' }))
+      );
 
       const results = await Promise.allSettled(requests);
       const boardMap = new Map();

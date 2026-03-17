@@ -15,7 +15,7 @@ const sharingMethods = {
   async shareProjectWithUser(spreadsheetId, emailAddress, role = 'writer') {
     try {
       return await this.makeRequest(
-        `https://www.googleapis.com/drive/v3/files/${spreadsheetId}/permissions?sendNotificationEmail=true`,
+        `https://www.googleapis.com/drive/v3/files/${spreadsheetId}/permissions?sendNotificationEmail=false`,
         {
           method: 'POST',
           body: JSON.stringify({
@@ -34,7 +34,7 @@ const sharingMethods = {
   async joinBoardByLink(spreadsheetId) {
     // Verify the board exists and is accessible, then add a shortcut to user's Drive
     const file = await this.makeRequest(
-      `https://www.googleapis.com/drive/v3/files/${spreadsheetId}?fields=id,name,appProperties,capabilities(canEdit)`
+      `https://www.googleapis.com/drive/v3/files/${spreadsheetId}?fields=id,name,properties,capabilities(canEdit)`
     );
     // Add shortcut so board appears in user's board list
     try {
