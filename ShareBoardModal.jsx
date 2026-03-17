@@ -81,17 +81,24 @@ export default function ShareBoardModal({ isOpen, onClose, boardId }) {
 
     setIsSharing(true);
     try {
-      // shareBoard(boardId, email, role)
+      console.log('Attempting to share board', boardId, 'with', email.trim(), 'as', role === 'editor' ? 'writer' : 'reader');
       await shareBoard(boardId, email.trim(), role === 'editor' ? 'writer' : 'reader');
+      console.log('Share successful');
       setEmail('');
       setSuggestions([]);
       setRole('viewer');
+      alert('Board shared successfully!');
     } catch (err) {
+      console.error('Full error object:', err);
       const msg = err?.message || '';
+      console.log('Error message:', msg);
+
       if (msg.includes('403') || msg.includes('domainPolicy') || msg.includes('sharingNotSupported')) {
         setError('Cannot share: the recipient\'s Google account does not allow external sharing, or you don\'t have permission to share this file.');
       } else if (msg.includes('400') || msg.includes('invalid')) {
         setError('Invalid email address. Please check and try again.');
+      } else if (msg.includes('401')) {
+        setError('Your session expired. Please sign out and sign back in.');
       } else {
         setError(msg || 'Failed to share board. Please try again.');
       }
