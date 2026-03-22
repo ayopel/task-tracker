@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Invite Created{% endblock %}
+{% block content %}
+<div class="max-w-md">
+  <h1 class="text-xl font-bold text-gray-900 mb-2">Invite Link Created</h1>
+  <p class="text-sm text-gray-500 mb-4">Share this link with your new team member. It's single-use and expires {{ invite.expires_at|date:"M d, Y" }}.</p>
+  <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 flex items-center gap-2">
+    <input id="invite-link" type="text" value="{{ link }}" readonly
+           class="flex-1 bg-transparent text-sm text-gray-800 outline-none select-all">
+    <button onclick="navigator.clipboard.writeText(document.getElementById('invite-link').value); this.textContent='Copied!'; setTimeout(()=>this.textContent='Copy',1500)"
+            class="text-sm text-brand-600 hover:text-brand-800 font-medium flex-shrink-0">Copy</button>
+  </div>
+  <a href="{% url 'invite_create' %}" class="inline-block mt-4 text-sm text-gray-500 hover:text-gray-700">Generate another</a>
+</div>
+{% endblock %}

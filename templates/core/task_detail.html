@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ task.title }} — Task Tracker{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+  <div class="flex items-start justify-between mb-6">
+    <div>
+      <p class="text-sm text-gray-500 mb-1"><a href="{% url 'project_board' pk=task.project.pk %}" class="hover:text-blue-600 transition">← {{ task.project.name }}</a></p>
+      <h1 class="text-2xl font-bold text-gray-900">{{ task.title }}</h1>
+    </div>
+    <a href="{% url 'task_edit' pk=task.pk %}" class="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg px-4 py-2 transition">Edit</a>
+  </div>
+
+  <div class="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+    <div class="px-5 py-4 flex items-center justify-between">
+      <span class="text-sm text-gray-500">Status</span>
+      <span class="text-sm px-2.5 py-0.5 rounded-full {% if task.status == 'todo' %}bg-gray-100 text-gray-600{% elif task.status == 'in_progress' %}bg-blue-50 text-blue-700{% else %}bg-green-50 text-green-700{% endif %}">{{ task.get_status_display }}</span>
+    </div>
+    <div class="px-5 py-4 flex items-center justify-between">
+      <span class="text-sm text-gray-500">Priority</span>
+      <span class="text-sm {% if task.priority == 'high' %}text-red-600{% elif task.priority == 'medium' %}text-yellow-600{% else %}text-gray-500{% endif %}">{{ task.get_priority_display }}</span>
+    </div>
+    {% if task.due_date %}
+    <div class="px-5 py-4 flex items-center justify-between">
+      <span class="text-sm text-gray-500">Due date</span>
+      <span class="text-sm text-gray-900">{{ task.due_date }}</span>
+    </div>
+    {% endif %}
+    <div class="px-5 py-4">
+      <span class="text-sm text-gray-500 block mb-2">Assignees</span>
+      {% if task.assignees.all %}
+      <div class="flex flex-wrap gap-2">
+        {% for a in task.assignees.all %}
+        <span class="text-xs bg-blue-50 text-blue-700 rounded-full px-2.5 py-1">{{ a.get_full_name|default:a.username }}</span>
+        {% endfor %}
+      </div>
+      {% else %}
+      <span class="text-sm text-gray-400">None</span>
+      {% endif %}
+    </div>
+    {% if task.labels %}
+    <div class="px-5 py-4">
+      <span class="text-sm text-gray-500 block mb-2">Labels</span>
+      <div class="flex flex-wrap gap-1.5">
+        {% for lbl in task.labels %}
+        <span class="text-xs bg-gray-100 text-gray-600 rounded px-2 py-0.5">{{ lbl }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% if task.description %}
+    <div class="px-5 py-4">
+      <span class="text-sm text-gray-500 block mb-2">Description</span>
+      <p class="text-sm text-gray-800 whitespace-pre-wrap">{{ task.description }}</p>
+    </div>
+    {% endif %}
+    <div class="px-5 py-4 flex items-center justify-between text-xs text-gray-400">
+      <span>Created by {{ task.created_by|default:"Unknown" }}</span>
+      <span>{{ task.created_at|date:"M d, Y H:i" }}</span>
+    </div>
+  </div>
+
+  {# Mobile status change #}
+  <div class="mt-6 md:hidden">
+    <form method="post" action="{% url 'task_move' pk=task.pk %}" class="flex gap-2">
+      {% csrf_token %}
+      <select name="status" class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
+        <option value="todo" {% if task.status == 'todo' %}selected{% endif %}>To Do</option>
+        <option value="in_progress" {% if task.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+        <option value="done" {% if task.status == 'done' %}selected{% endif %}>Done</option>
+      </select>
+      <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg px-4 py-2 transition">Move</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

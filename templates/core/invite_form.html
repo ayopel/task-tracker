@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Generate Invite — Task Tracker{% endblock %}
+{% block content %}
+<div class="max-w-md">
+  <h1 class="text-2xl font-bold text-gray-900 mb-2">Invite a teammate</h1>
+  <p class="text-sm text-gray-500 mb-6">Generate a single-use invite link that expires in 7 days.</p>
+  <form method="post">
+    {% csrf_token %}
+    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg px-5 py-2.5 text-sm transition">Generate invite link</button>
+  </form>
+</div>
+{% endblock %}

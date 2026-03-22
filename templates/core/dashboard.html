@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Task Tracker{% endblock %}
+{% block content %}
+<div class="mb-8">
+  <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+  <p class="text-gray-500 text-sm mt-1">Welcome back, {{ user.get_full_name|default:user.username }}.</p>
+</div>
+
+{% if my_tasks %}
+<div class="mb-10">
+  <h2 class="text-lg font-semibold text-gray-800 mb-3">My Open Tasks</h2>
+  <div class="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+    {% for task in my_tasks %}
+    <a href="{% url 'task_detail' pk=task.pk %}" class="flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 transition">
+      <div class="flex items-center gap-3">
+        <span class="inline-block w-2 h-2 rounded-full {% if task.priority == 'high' %}bg-red-500{% elif task.priority == 'medium' %}bg-yellow-400{% else %}bg-gray-300{% endif %}"></span>
+        <span class="text-sm font-medium text-gray-900">{{ task.title }}</span>
+        <span class="text-xs text-gray-400">{{ task.project.name }}</span>
+      </div>
+      <span class="text-xs px-2.5 py-0.5 rounded-full {% if task.status == 'todo' %}bg-gray-100 text-gray-600{% elif task.status == 'in_progress' %}bg-blue-50 text-blue-700{% else %}bg-green-50 text-green-700{% endif %}">{{ task.get_status_display }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div>
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-lg font-semibold text-gray-800">Projects</h2>
+    <a href="{% url 'project_create' %}" class="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">+ New Project</a>
+  </div>
+  {% if projects %}
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    {% for project in projects %}
+    <a href="{% url 'project_board' pk=project.pk %}" class="bg-white rounded-xl border border-gray-200 p-5 hover:shadow-md transition group">
+      <h3 class="font-semibold text-gray-900 group-hover:text-blue-600 transition">{{ project.name }}</h3>
+      {% if project.description %}<p class="text-sm text-gray-500 mt-1 line-clamp-2">{{ project.description }}</p>{% endif %}
+      <p class="text-xs text-gray-400 mt-3">{{ project.tasks.count }} task{{ project.tasks.count|pluralize }}</p>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="bg-white rounded-xl border border-gray-200 p-10 text-center">
+    <p class="text-gray-500 mb-4">No projects yet.</p>
+    <a href="{% url 'project_create' %}" class="text-blue-600 hover:underline text-sm">Create your first project →</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} — Task Tracker{% endblock %}
+
+{% block content %}
+{# ── Header ─#}
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+  <div>
+    <h1 class="text-2xl font-bold text-gray-900">{{ project.name }}</h1>
+    {% if project.description %}<p class="text-sm text-gray-500 mt-1">{{ project.description }}</p>{% endif %}
+  </div>
+  <div class="flex items-center gap-2">
+    <a href="{% url 'project_activity' pk=project.pk %}" class="text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg px-3 py-2 transition">Activity</a>
+    <a href="{% url 'task_create' project_pk=project.pk %}" class="text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 transition">+ Task</a>
+  </div>
+</div>
+
+{# ── Filters ─#}
+<form method="get" class="flex flex-wrap gap-3 mb-6 items-end">
+  <div>
+    <label class="block text-xs text-gray-500 mb-1">Search</label>
+    <input type="text" name="q" value="{{ filters.q }}" placeholder="Search tasks…" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm w-44 focus:ring-2 focus:ring-blue-500 outline-none">
+  </div>
+  <div>
+    <label class="block text-xs text-gray-500 mb-1">Assignee</label>
+    <select name="assignee" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+      <option value="">All</option>
+      {% for u in users %}
+      <option value="{{ u.pk }}" {% if filters.assignee == u.pk|stringformat:"d" %}selected{% endif %}>{{ u.get_full_name|default:u.username }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="block text-xs text-gray-500 mb-1">Priority</label>
+    <select name="priority" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+      <option value="">All</option>
+      {% for val, label in priorities %}
+      <option value="{{ val }}" {% if filters.priority == val %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% if all_labels %}
+  <div>
+    <label class="block text-xs text-gray-500 mb-1">Label</label>
+    <select name="label" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+      <option value="">All</option>
+      {% for lbl in all_labels %}
+      <option value="{{ lbl }}" {% if filters.label == lbl %}selected{% endif %}>{{ lbl }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  <button type="submit" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm rounded-lg px-4 py-1.5 transition">Filter</button>
+  {% if filters.q or filters.assignee or filters.priority or filters.label %}
+  <a href="{% url 'project_board' pk=project.pk %}" class="text-xs text-gray-500 hover:text-red-600 py-1.5">Clear</a>
+  {% endif %}
+</form>
+
+{# ── Board ─#}
+<div class="grid grid-cols-1 md:grid-cols-3 gap-5" id="board">
+  {% for col in columns %}
+  <div class="flex flex-col">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-sm font-semibold text-gray-600 uppercase tracking-wider">{{ col.title }}</h2>
+      <span class="text-xs text-gray-400">{{ col.tasks.count }}</span>
+    </div>
+    <div class="flex-1 bg-gray-100 rounded-xl p-3 min-h-[200px] space-y-2.5 kanban-column" data-status="{{ col.status }}">
+      {% for task in col.tasks %}
+      <div class="bg-white rounded-lg border border-gray-200 p-3.5 shadow-sm hover:shadow transition cursor-grab task-card" data-task-id="{{ task.pk }}">
+        <a href="{% url 'task_detail' pk=task.pk %}" class="block">
+          <div class="flex items-start justify-between gap-2 mb-1.5">
+            <span class="text-sm font-medium text-gray-900 leading-snug">{{ task.title }}</span>
+            <span class="shrink-0 inline-block w-2 h-2 mt-1.5 rounded-full {% if task.priority == 'high' %}bg-red-500{% elif task.priority == 'medium' %}bg-yellow-400{% else %}bg-gray-300{% endif %}"></span>
+          </div>
+          {% if task.labels %}
+          <div class="flex flex-wrap gap-1 mb-2">
+            {% for lbl in task.labels %}
+            <span class="text-[10px] bg-gray-100 text-gray-600 rounded px-1.5 py-0.5">{{ lbl }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+          <div class="flex items-center justify-between text-xs text-gray-400">
+            <span>{% if task.due_date %}Due {{ task.due_date }}{% endif %}</span>
+            <span>{% for a in task.assignees.all %}{{ a.first_name|default:a.username|truncatechars:8 }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+          </div>
+        </a>
+      </div>
+      {% empty %}
+      <p class="text-center text-xs text-gray-400 py-8">No tasks</p>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value
+    || '{{ csrf_token }}';
+
+  document.querySelectorAll('.kanban-column').forEach(function(col) {
+    Sortable.create(col, {
+      group: 'board',
+      animation: 180,
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      draggable: '.task-card',
+      onEnd: function(evt) {
+        const taskId = evt.item.dataset.taskId;
+        const newStatus = evt.to.dataset.status;
+        fetch(`/tasks/${taskId}/move/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': csrfToken,
+          },
+          body: `status=${newStatus}`,
+        }).then(r => {
+          if (!r.ok) evt.from.appendChild(evt.item);
+        });
+      }
+    });
+  });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,6 @@
+django>=5.0,<6.0
+whitenoise>=6.5
+resend>=2.0
+gunicorn>=22.0
+dj-database-url>=2.1
+psycopg2-binary>=2.9
